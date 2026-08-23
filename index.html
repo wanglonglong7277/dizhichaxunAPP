@@ -7,7 +7,7 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js">
     </script>
     <style>
-        /* ========== 样式（与之前一致，已精简） ========== */
+        /* ========== 样式（与之前相同，已精简） ========== */
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
             background: #f1f5f9;
@@ -233,7 +233,7 @@
 
 <script>
 // ================================================================
-//  完整功能代码 (正向 + 反向，反向结果按 OLT IP 分组)
+//  修正版：反向查询只匹配完整地址包含关键词，不再拆分子串
 // ================================================================
 
 const $ = id => document.getElementById(id);
@@ -260,7 +260,7 @@ const modeRadios = document.querySelectorAll('input[name="queryMode"]');
 let records = [];
 let ipIndex = null;
 let nameIndex = null;
-let col4Index = null;
+let col4Index = null; // 键为完整col4（小写）
 let isReady = false;
 let loadingLock = false;
 let currentMode = 'forward';
@@ -355,18 +355,21 @@ async function loadFromCache() {
     } catch (e) { console.warn('缓存读取失败:', e); return null; }
 }
 
-// ---------- 构建索引 ----------
+// ---------- 构建索引（反向只保留完整col4） ----------
 function buildIndexes(data) {
     const ipMap = new Map();
     const nameMap = new Map();
-    const col4Map = new Map();
+    const col4Map = new Map(); // 完整col4（小写）
+
     const splitRegex = /[\s\-_\.\/:、，]+/;
 
     data.forEach((rec, idx) => {
+        // 正向：IP
         if (rec.first) {
             if (!ipMap.has(rec.first)) ipMap.set(rec.first, []);
             ipMap.get(rec.first).push(idx);
         }
+        // 正向：OLT名称分词
         if (rec.oltName) {
             const words = rec.oltName.split(splitRegex).filter(w => w.length > 0);
             for (const w of words) {
@@ -391,30 +394,17 @@ function buildIndexes(data) {
                 }
             }
         }
+        // 反向：完整col4
         if (rec.col4) {
             const key = rec.col4.toLowerCase();
             if (!col4Map.has(key)) col4Map.set(key, []);
             col4Map.get(key).push(idx);
-            const raw = rec.col4;
-            if (raw.length >= 2) {
-                for (let i = 0; i < raw.length; i++) {
-                    for (let j = i + 2; j <= Math.min(i + 4, raw.length); j++) {
-                        const sub = raw.substring(i, j);
-                        if (sub.length >= 2) {
-                            const key2 = sub.toLowerCase();
-                            if (!col4Map.has(key2)) col4Map.set(key2, []);
-                            const list = col4Map.get(key2);
-                            if (!list.includes(idx)) list.push(idx);
-                        }
-                    }
-                }
-            }
         }
     });
     return { ipMap, nameMap, col4Map };
 }
 
-// ---------- 正向搜索 ----------
+// ---------- 正向搜索（不变） ----------
 function getMatchedFirstsWithIndex(query) {
     if (!query || !isReady || !ipIndex || !nameIndex) return [];
     const lower = query.toLowerCase().trim();
@@ -466,14 +456,17 @@ function getMatchedFirstsWithIndex(query) {
     return arr.sort((a, b) => a.first.localeCompare(b.first));
 }
 
-// ---------- 反向搜索 ----------
+// ---------- 反向搜索（只匹配完整col4包含关键词） ----------
 function getMatchedByCol4(query) {
     if (!query || !isReady || !col4Index) return [];
     const lower = query.toLowerCase().trim();
     if (!lower) return [];
+
     const resultMap = new Map();
+
+    // 遍历所有完整col4键
     for (const [key, indices] of col4Index) {
-        if (key.includes(lower) || lower.includes(key)) {
+        if (key.includes(lower)) { // 地址包含关键词
             for (const idx of indices) {
                 const r = records[idx];
                 const keyId = r.col4 + '|' + r.first + '|' + r.second;
@@ -488,27 +481,13 @@ function getMatchedByCol4(query) {
             }
         }
     }
-    if (resultMap.size < 3) {
-        for (const r of records) {
-            if (r.col4 && r.col4.toLowerCase().includes(lower)) {
-                const keyId = r.col4 + '|' + r.first + '|' + r.second;
-                if (!resultMap.has(keyId)) {
-                    resultMap.set(keyId, {
-                        col4: r.col4 || '',
-                        first: r.first || '',
-                        second: r.second || '',
-                        oltName: r.oltName || '',
-                    });
-                }
-            }
-        }
-    }
+
     const arr = Array.from(resultMap.values());
     if (arr.length > 300) return arr.slice(0, 300);
     return arr.sort((a, b) => (a.col4 || '').localeCompare(b.col4 || ''));
 }
 
-// ---------- 正向UI ----------
+// ---------- 正向UI（不变） ----------
 function updateFirstLevel() {
     const query = searchInput.value.trim();
     suggestionsList.innerHTML = '';
@@ -687,7 +666,7 @@ function updateOltNameDisplay(ip) {
     }
 }
 
-// ---------- 反向UI ----------
+// ---------- 反向UI（去重，仅显示地址） ----------
 function updateReverseSuggestions() {
     const query = searchInput.value.trim();
     suggestionsList.innerHTML = '';
@@ -698,36 +677,47 @@ function updateReverseSuggestions() {
     noResultMsg.style.display = 'none';
     oltNameDisplay.innerHTML = '<span class="label">⏳ 等待选择地址</span>';
     oltNameDisplay.classList.remove('active');
+
     if (!query || !isReady) return;
+
     const matched = getMatchedByCol4(query);
     if (matched.length === 0) {
         suggestionsList.style.display = 'block';
         suggestionsList.innerHTML = '<div class="suggestions-empty">😕 未找到匹配的六级地址，试试更短的关键词</div>';
         return;
     }
+
+    // 按 col4 去重
+    const uniqueMap = new Map();
+    for (const item of matched) {
+        if (!uniqueMap.has(item.col4)) {
+            uniqueMap.set(item.col4, item);
+        }
+    }
+    const uniqueItems = Array.from(uniqueMap.values());
+
     suggestionsList.style.display = 'block';
     const fragment = document.createDocumentFragment();
     const displayLimit = 200;
-    const showCount = Math.min(matched.length, displayLimit);
+    const showCount = Math.min(uniqueItems.length, displayLimit);
+
     for (let i = 0; i < showCount; i++) {
-        const item = matched[i];
+        const item = uniqueItems[i];
         const div = document.createElement('div');
         div.className = 'suggestion-item';
         const leftSpan = document.createElement('span');
         leftSpan.className = 'suggestion-ip';
         leftSpan.innerHTML = '📍 ' + highlightText(item.col4, query);
-        const infoSpan = document.createElement('span');
-        infoSpan.className = 'suggestion-name';
-        infoSpan.textContent = `OLT:${item.oltName || '?'}  IP:${item.first || '?'}  PON:${item.second || '?'}`;
         div.appendChild(leftSpan);
-        div.appendChild(infoSpan);
         div.addEventListener('click', () => {
             searchInput.value = item.col4;
             suggestionsList.style.display = 'none';
             showReverseResult(item.col4);
-            if (item.oltName) {
-                oltNameDisplay.innerHTML = '<span class="label">📌 匹配OLT：</span> <strong class="name-value">' +
-                    item.oltName + ' (' + item.first + ')</strong>';
+            const all = records.filter(r => r.col4 === item.col4);
+            const uniqueOlts = new Set(all.map(r => r.first).filter(ip => ip));
+            const count = uniqueOlts.size;
+            if (count > 0) {
+                oltNameDisplay.innerHTML = `<span class="label">📌 匹配地址：</span> <strong class="name-value">${item.col4}</strong> <span style="font-size:0.8rem; color:#64748b;">（共 ${count} 个 OLT）</span>`;
                 oltNameDisplay.classList.add('active');
             } else {
                 oltNameDisplay.innerHTML = '<span class="label">⚠️ 未找到OLT信息</span>';
@@ -736,16 +726,18 @@ function updateReverseSuggestions() {
         });
         fragment.appendChild(div);
     }
-    if (matched.length > displayLimit) {
+
+    if (uniqueItems.length > displayLimit) {
         const moreDiv = document.createElement('div');
         moreDiv.className = 'suggestions-more';
-        moreDiv.textContent = `… 还有 ${matched.length - displayLimit} 个结果，请继续输入缩小范围`;
+        moreDiv.textContent = `… 还有 ${uniqueItems.length - displayLimit} 个结果，请继续输入缩小范围`;
         fragment.appendChild(moreDiv);
     }
+
     suggestionsList.appendChild(fragment);
 }
 
-// ★★★ 反向结果展示：按 OLT IP 分组，每行显示 IP (OLT名称) → PON列表 ★★★
+// ---------- 反向结果展示（按OLT分组） ----------
 function showReverseResult(col4Value) {
     if (!col4Value || !isReady) {
         resultsContainer.innerHTML = '';
@@ -760,7 +752,6 @@ function showReverseResult(col4Value) {
         return;
     }
 
-    // 按 OLT IP 分组
     const groups = new Map();
     filtered.forEach(r => {
         const ip = r.first || '无IP';
@@ -796,7 +787,7 @@ function updateSuggestions() {
     }
 }
 
-// ---------- 数据加载 ----------
+// ---------- 数据加载（不变） ----------
 async function loadData(forceRefresh = false) {
     if (loadingLock) return;
     loadingLock = true;
@@ -911,7 +902,7 @@ async function loadData(forceRefresh = false) {
     }
 }
 
-// ---------- 事件绑定 ----------
+// ---------- 事件绑定（不变） ----------
 searchInput.addEventListener('input', function() {
     if (!isReady) return;
     clearTimeout(this._timer);
