@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>十级地址在线查询</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        /* ===== 全局重置 & 基础样式 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #f1f5f9;
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 880px;
+            background: white;
+            border-radius: 28px;
+            padding: 30px 26px;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.08);
+            position: relative;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            color: #0f172a;
+            text-align: center;
+            margin-bottom: 2px;
+        }
+        .sub {
+            text-align: center;
+            color: #64748b;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+        }
+
+        /* ===== 状态栏 ===== */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            color: #059669;
+            background: #ecfdf5;
+            padding: 10px 16px;
+            border-radius: 12px;
+            transition: all 0.3s;
+            min-height: 48px;
+            flex-wrap: wrap;
+        }
+        .status-bar.error {
+            color: #b91c1c;
+            background: #fef2f2;
+        }
+        .status-bar .status-spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2.5px solid #e2e8f0;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ===== 进度条 ===== */
+        .progress-wrap {
+            width: 100%;
+            height: 6px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin: -2px 0 14px 0;
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        .progress-wrap.active {
+            opacity: 1;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            border-radius: 6px;
+            transition: width 0.3s ease;
+        }
+
+        /* ===== 文件上传提示 ===== */
+        .file-upload-hint {
+            text-align: center;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .file-upload-hint button {
+            background: none;
+            border: 1px dashed #3b82f6;
+            color: #2563eb;
+            padding: 8px 20px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+        .file-upload-hint button:hover {
+            background: #eff6ff;
+        }
+        .file-upload-hint .hint-text {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-right: 8px;
+        }
+
+        /* ===== 搜索区域 ===== */
+        .search-area {
+            background: #f8fafc;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 4px;
+            border: 1px solid #e2e8f0;
+        }
+        .section {
+            margin-bottom: 16px;
+        }
+        .section:last-child {
+            margin-bottom: 0;
+        }
+        .section-title {
+            font-weight: 600;
+            color: #1e293b;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .section-title .badge {
+            font-size: 0.65rem;
+            background: #dbeafe;
+            color: #1d4ed8;
+            padding: 0 10px;
+            border-radius: 20px;
+            font-weight: 400;
+        }
+
+        .search-wrapper {
+            position: relative;
+        }
+        input,
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 14px;
+            border: 1px solid #cbd5e1;
+            font-size: 0.95rem;
+            outline: none;
+            font-family: inherit;
+            background: white;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus,
+        select:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+        }
+        input:disabled {
+            background: #f1f5f9;
+            cursor: not-allowed;
+        }
+
+        /* ===== 下拉建议 ===== */
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-top: none;
+            border-radius: 0 0 14px 14px;
+            max-height: 220px;
+            overflow-y: auto;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+            display: none;
+        }
+        .suggestions.loading {
+            display: block;
+            text-align: center;
+            padding: 16px;
+            color: #94a3b8;
+            font-size: 0.85rem;
+        }
+        .suggestion-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+            transition: background 0.15s;
+        }
+        .suggestion-item:hover,
+        .suggestion-item.active-hover {
+            background: #eff6ff;
+            color: #1d4ed8;
+        }
+        .suggestion-ip {
+            font-weight: 500;
+            font-family: monospace;
+        }
+        .suggestion-name {
+            font-size: 0.8rem;
+            color: #64748b;
+            background: #f1f5f9;
+            padding: 2px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .suggestion-item.active-hover .suggestion-name {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        .suggestions-empty {
+            padding: 14px 16px;
+            color: #94a3b8;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+        .suggestions-more {
+            padding: 8px 16px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.75rem;
+            border-top: 1px solid #f1f5f9;
+            background: #fafafa;
+        }
+
+        /* ===== OLT 名称展示 ===== */
+        .olt-name-display {
+            font-size: 0.95rem;
+            color: #1e293b;
+            margin-top: 10px;
+            min-height: 2.4rem;
+            padding: 8px 14px;
+            background: #f8fafc;
+            border-radius: 10px;
+            border-left: 4px solid #94a3b8;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            word-break: break-all;
+        }
+        .olt-name-display.active {
+            background: #eff6ff;
+            border-left-color: #3b82f6;
+            color: #1d4ed8;
+        }
+        .olt-name-display .label {
+            color: #64748b;
+            font-weight: 400;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .olt-name-display .name-value {
+            font-weight: 500;
+        }
+
+        /* ===== 结果展示 ===== */
+        .results-container {
+            margin-top: 14px;
+            max-height: 340px;
+            overflow-y: auto;
+        }
+        .result-item {
+            padding: 12px 16px;
+            background: #f0fdf4;
+            border-radius: 10px;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+            word-break: break-all;
+            border: 1px solid #bbf7d0;
+            transition: background 0.2s;
+        }
+        .result-item:hover {
+            background: #dcfce7;
+        }
+        .result-item .highlight-label {
+            font-weight: 600;
+            color: #0b3b5c;
+        }
+        .no-result {
+            text-align: center;
+            color: #94a3b8;
+            font-style: italic;
+            padding: 20px;
+            display: none;
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        /* ===== 刷新按钮 ===== */
+        .refresh-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 4px 12px;
+            border-radius: 8px;
+            transition: background 0.2s, color 0.2s;
+            margin-left: 8px;
+        }
+        .refresh-btn:hover {
+            background: #e2e8f0;
+            color: #0f172a;
+        }
+        .refresh-btn svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        /* ===== 模式切换 ===== */
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .mode-toggle label {
+            font-size: 0.85rem;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            background: #f1f5f9;
+            padding: 6px 14px;
+            border-radius: 30px;
+            transition: all 0.2s;
+        }
+        .mode-toggle label.active-mode {
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 500;
+        }
+        .mode-toggle input[type="radio"] {
+            width: auto;
+            margin-right: 2px;
+            accent-color: #3b82f6;
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 500px) {
+            .container {
+                padding: 20px 14px;
+            }
+            .suggestion-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .status-bar {
+                font-size: 0.78rem;
+                padding: 8px 12px;
+            }
+            .suggestion-name {
+                max-width: 200px;
+            }
+        }
+
+        /* ===== 滚动条美化 ===== */
+        .suggestions::-webkit-scrollbar,
+        .results-container::-webkit-scrollbar {
+            width: 4px;
+        }
+        .suggestions::-webkit-scrollbar-track,
+        .results-container::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .suggestions::-webkit-scrollbar-thumb,
+        .results-container::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .suggestions::-webkit-scrollbar-thumb:hover,
+        .results-container::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        .highlight-match {
+            background: #fde047;
+            padding: 0 2px;
+            border-radius: 2px;
+            font-weight: 600;
+        }
+        .reverse-result {
+            background: #eef2ff;
+            border-left: 4px solid #4f46e5;
+        }
+        .reverse-result .label {
+            color: #4338ca;
+            font-weight: 500;
+        }
+        .select-hint {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📊 十级地址在线查询</h1>
+        <div class="sub">反向查询 · 根据六级地址匹配OLT与PON口明细</div>
+
+        <!-- 状态栏 -->
+        <div class="status-bar" id="statusBar">
+            <span class="status-spinner" id="statusSpinner"></span>
+            <span id="statusText">正在初始化…</span>
+            <button class="refresh-btn" id="refreshBtn" title="重新加载数据" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6M1 20v-6h6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                刷新
+            </button>
+        </div>
+
+        <!-- 进度条 -->
+        <div class="progress-wrap" id="progressWrap">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <!-- 上传提示 -->
+        <div class="file-upload-hint" id="uploadHint">
+            <span class="hint-text">如果数据加载失败，可手动上传 Excel：</span>
+            <button onclick="document.getElementById('fileInput').click()">📁 选择文件</button>
+            <input type="file" id="fileInput" accept=".xlsx, .xls" style="display:none;" />
+        </div>
+
+        <!-- 搜索区域 -->
+        <div class="search-area">
+            <!-- 模式切换 -->
+            <div class="mode-toggle" id="modeToggle">
+                <label>
+                    <input type="radio" name="queryMode" value="forward" /> 正向 (OLT IP/名称)
+                </label>
+                <label class="active-mode">
+                    <input type="radio" name="queryMode" value="reverse" checked /> 反向 (六级地址)
+                </label>
+            </div>
+
+            <div class="section">
+                <div class="section-title" id="sectionTitle">
+                    🔹 六级地址名称 (反向匹配)
+                    <span class="badge">输入地址关键词</span>
+                </div>
+                <div class="search-wrapper">
+                    <input type="text" id="searchInput" placeholder="输入六级地址名称，如 '惠民县' 或 '城关镇'" disabled autocomplete="off" />
+                    <div class="suggestions" id="suggestionsList"></div>
+                    <div id="oltNameDisplay" class="olt-name-display">
+                        <span class="label">⏳ 等待选择地址</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果展示：显示OLT IP / 名称 / PON口明细 -->
+            <div class="results-container" id="resultsContainer"></div>
+            <div class="no-result" id="noResultMsg">没有匹配的六级地址</div>
+        </div>
+
+        <div class="hint">数据来源：data.xlsx（第1列:IP，第2列:PON，第3列:OLT名称，第4列:六级地址，第5列:十级地址）</div>
+    </div>
+
+    <script>
+        // ================================================================
+        //  六级地址反向匹配  —— 根据 col4 (六级地址) 匹配 OLT IP / 名称 / PON口
+        //  结果不显示十级地址，只显示上联PON口明细
+        // ================================================================
+
+        const $ = id => document.getElementById(id);
+        const statusBar = $('statusBar');
+        const statusText = $('statusText');
+        const statusSpinner = $('statusSpinner');
+        const progressWrap = $('progressWrap');
+        const progressBar = $('progressBar');
+        const uploadHint = $('uploadHint');
+        const refreshBtn = $('refreshBtn');
+        const searchInput = $('searchInput');
+        const suggestionsList = $('suggestionsList');
+        const resultsContainer = $('resultsContainer');
+        const noResultMsg = $('noResultMsg');
+        const fileInput = $('fileInput');
+        const oltNameDisplay = $('oltNameDisplay');
+        const sectionTitle = $('sectionTitle');
+        const modeRadios = document.querySelectorAll('input[name="queryMode"]');
+
+        // ---------- 状态 ----------
+        let records = [];
+        let ipIndex = null; // 保留正向用
+        let nameIndex = null;
+        let reverseCol4Index = null; // 六级地址索引 Map<col4, [recordIndex]>
+        let isReady = false;
+        let loadingLock = false;
+        let currentMode = 'reverse'; // 默认反向
+
+        // ---------- 工具函数 ----------
+        function setStatus(icon, text, isError = false, showSpinner = false, percent = null) {
+            statusSpinner.style.display = showSpinner ? 'inline-block' : 'none';
+            let displayText = text;
+            if (percent !== null && percent >= 0 && percent <= 100) {
+                displayText = text + ' ' + Math.round(percent) + '%';
+            }
+            if (icon && !showSpinner) {
+                displayText = icon + ' ' + displayText;
+            }
+            statusText.textContent = displayText;
+            statusBar.className = 'status-bar' + (isError ? ' error' : '');
+        }
+
+        function setProgress(pct) {
+            const val = Math.min(100, Math.max(0, pct));
+            progressWrap.classList.add('active');
+            progressBar.style.width = val + '%';
+            if (!statusBar.classList.contains('error')) {
+                const currentText = statusText.textContent.replace(/\s*\d+%$/, '').trim();
+                setStatus(null, currentText, false, true, val);
+            }
+        }
+
+        function hideProgress() {
+            progressWrap.classList.remove('active');
+        }
+
+        function showUploadHint(show) {
+            uploadHint.style.display = show ? 'block' : 'none';
+        }
+
+        function highlightText(text, keyword) {
+            if (!keyword || !text) return text;
+            const lowerText = text.toLowerCase();
+            const lowerKw = keyword.toLowerCase();
+            const idx = lowerText.indexOf(lowerKw);
+            if (idx === -1) return text;
+            const before = text.substring(0, idx);
+            const matched = text.substring(idx, idx + keyword.length);
+            const after = text.substring(idx + keyword.length);
+            return before + '<span class="highlight-match">' + matched + '</span>' + after;
+        }
+
+        // ---------- IndexedDB 缓存 ----------
+        const DB_NAME = 'AddressQueryDB';
+        const STORE_NAME = 'records';
+        const DB_VERSION = 1;
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(DB_NAME, DB_VERSION);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function saveToCache(data) {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                store.clear();
+                for (let i = 0; i < data.length; i++) {
+                    store.add({ id: i, ...data[i] });
+                }
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+                db.close();
+                return true;
+            } catch (e) {
+                console.warn('缓存写入失败:', e);
+                return false;
+            }
+        }
+
+        async function loadFromCache() {
+            try {
+                const db = await openDB();
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const all = await new Promise((resolve, reject) => {
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+                db.close();
+                if (all && all.length > 0) {
+                    return all.map(({ id, ...rest }) => rest);
+                }
+                return null;
+            } catch (e) {
+                console.warn('缓存读取失败:', e);
+                return null;
+            }
+        }
+
+        // ---------- 构建索引 ----------
+        function buildIndexes(data) {
+            const ipMap = new Map();
+            const nameMap = new Map();
+            const col4Map = new Map(); // 六级地址索引
+
+            data.forEach((rec, idx) => {
+                if (rec.first) {
+                    if (!ipMap.has(rec.first)) ipMap.set(rec.first, []);
+                    ipMap.get(rec.first).push(idx);
+                }
+                if (rec.oltName) {
+                    const key = rec.oltName.toLowerCase();
+                    if (!nameMap.has(key)) nameMap.set(key, []);
+                    nameMap.get(key).push(idx);
+                }
+                // 六级地址 (col4) 索引
+                if (rec.col4) {
+                    const key = rec.col4.toLowerCase();
+                    if (!col4Map.has(key)) col4Map.set(key, []);
+                    col4Map.get(key).push(idx);
+                    // 同时建立子串索引，支持模糊匹配
+                    const raw = rec.col4;
+                    if (raw.length >= 2) {
+                        for (let i = 0; i < raw.length; i++) {
+                            for (let j = i + 2; j <= Math.min(i + 4, raw.length); j++) {
+                                const sub = raw.substring(i, j).toLowerCase();
+                                if (sub.length >= 2) {
+                                    if (!col4Map.has(sub)) col4Map.set(sub, []);
+                                    const list = col4Map.get(sub);
+                                    if (!list.includes(idx)) list.push(idx);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            return { ipMap, nameMap, col4Map };
+        }
+
+        // ---------- 核心搜索：根据六级地址 (col4) 匹配 ----------
+        function getMatchedByCol4(query) {
+            if (!query || !isReady || !reverseCol4Index) return [];
+            const lower = query.toLowerCase().trim();
+            if (!lower) return [];
+
+            const resultMap = new Map();
+
+            // 1. 索引匹配 (包含)
+            for (const [key, indices] of reverseCol4Index) {
+                if (key.includes(lower) || lower.includes(key)) {
+                    for (const idx of indices) {
+                        const r = records[idx];
+                        const keyId = r.col4 + '|' + r.first + '|' + r.second;
+                        if (!resultMap.has(keyId)) {
+                            resultMap.set(keyId, {
+                                col4: r.col4 || '',
+                                first: r.first || '',
+                                second: r.second || '',
+                                oltName: r.oltName || '',
+                                // col5 不再使用
+                            });
+                        }
+                    }
+                }
+            }
+
+            // 2. 如果索引结果太少，fallback 遍历
+            if (resultMap.size < 3) {
+                for (const r of records) {
+                    if (r.col4 && r.col4.toLowerCase().includes(lower)) {
+                        const keyId = r.col4 + '|' + r.first + '|' + r.second;
+                        if (!resultMap.has(keyId)) {
+                            resultMap.set(keyId, {
+                                col4: r.col4 || '',
+                                first: r.first || '',
+                                second: r.second || '',
+                                oltName: r.oltName || '',
+                            });
+                        }
+                    }
+                }
+            }
+
+            const arr = Array.from(resultMap.values());
+            if (arr.length > 300) return arr.slice(0, 300);
+            return arr.sort((a, b) => (a.col4 || '').localeCompare(b.col4 || ''));
+        }
+
+        // ---------- 正向搜索 (保留) ----------
+        function getMatchedFirstsWithIndex(query) {
+            if (!query || !isReady || !ipIndex || !nameIndex) return [];
+            const lower = query.toLowerCase().trim();
+            if (!lower) return [];
+            const resultMap = new Map();
+            for (const [ip, indices] of ipIndex) {
+                if (ip.toLowerCase().includes(lower)) {
+                    for (const idx of indices) {
+                        const r = records[idx];
+                        if (!resultMap.has(r.first)) {
+                            resultMap.set(r.first, { first: r.first, oltName: r.oltName || '' });
+                        }
+                    }
+                }
+            }
+            if (lower.length >= 2) {
+                for (const [key, indices] of nameIndex) {
+                    if (key.includes(lower) || lower.includes(key)) {
+                        for (const idx of indices) {
+                            const r = records[idx];
+                            if (!resultMap.has(r.first)) {
+                                resultMap.set(r.first, { first: r.first, oltName: r.oltName || '' });
+                            }
+                        }
+                    }
+                }
+            }
+            const arr = Array.from(resultMap.values());
+            if (arr.length > 300) return arr.slice(0, 300);
+            return arr.sort((a, b) => a.first.localeCompare(b.first));
+        }
+
+        // ---------- 更新UI (反向模式) ----------
+        function updateReverseSuggestions() {
+            const query = searchInput.value.trim();
+            suggestionsList.innerHTML = '';
+            suggestionsList.style.display = 'none';
+            resultsContainer.innerHTML = '';
+            noResultMsg.style.display = 'none';
+            oltNameDisplay.innerHTML = '<span class="label">⏳ 等待选择地址</span>';
+            oltNameDisplay.classList.remove('active');
+
+            if (!query || !isReady) return;
+
+            const matched = getMatchedByCol4(query);
+
+            if (matched.length === 0) {
+                suggestionsList.style.display = 'block';
+                suggestionsList.innerHTML = '<div class="suggestions-empty">😕 未找到匹配的六级地址，试试更短的关键词</div>';
+                return;
+            }
+
+            suggestionsList.style.display = 'block';
+            const fragment = document.createDocumentFragment();
+            const displayLimit = 200;
+            const showCount = Math.min(matched.length, displayLimit);
+
+            for (let i = 0; i < showCount; i++) {
+                const item = matched[i];
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+
+                const leftSpan = document.createElement('span');
+                leftSpan.className = 'suggestion-ip';
+                leftSpan.innerHTML = '📍 ' + highlightText(item.col4, query);
+
+                const infoSpan = document.createElement('span');
+                infoSpan.className = 'suggestion-name';
+                infoSpan.textContent = `OLT:${item.oltName || '?'}  IP:${item.first || '?'}  PON:${item.second || '?'}`;
+
+                div.appendChild(leftSpan);
+                div.appendChild(infoSpan);
+
+                div.addEventListener('click', () => {
+                    // 选中后，直接显示结果
+                    searchInput.value = item.col4;
+                    suggestionsList.style.display = 'none';
+                    showReverseResult(item.col4);
+                    // 更新OLT名称展示
+                    if (item.oltName) {
+                        oltNameDisplay.innerHTML = '<span class="label">📌 匹配OLT：</span> <strong class="name-value">' +
+                            item.oltName + ' (' + item.first + ')</strong>';
+                        oltNameDisplay.classList.add('active');
+                    } else {
+                        oltNameDisplay.innerHTML = '<span class="label">⚠️ 未找到OLT信息</span>';
+                        oltNameDisplay.classList.remove('active');
+                    }
+                });
+
+                fragment.appendChild(div);
+            }
+
+            if (matched.length > displayLimit) {
+                const moreDiv = document.createElement('div');
+                moreDiv.className = 'suggestions-more';
+                moreDiv.textContent = `… 还有 ${matched.length - displayLimit} 个结果，请继续输入缩小范围`;
+                fragment.appendChild(moreDiv);
+            }
+
+            suggestionsList.appendChild(fragment);
+        }
+
+        // 显示反向匹配结果 (根据六级地址) —— 只显示OLT名称、IP、PON口明细
+        function showReverseResult(col4Value) {
+            if (!col4Value || !isReady) {
+                resultsContainer.innerHTML = '';
+                noResultMsg.style.display = 'block';
+                return;
+            }
+            // 从 records 中筛选 col4 === col4Value
+            const filtered = records.filter(r => r.col4 === col4Value);
+            if (filtered.length === 0) {
+                resultsContainer.innerHTML = '';
+                noResultMsg.style.display = 'block';
+                noResultMsg.textContent = '没有匹配的六级地址数据';
+                return;
+            }
+
+            resultsContainer.innerHTML = '';
+            noResultMsg.style.display = 'none';
+            const fragment = document.createDocumentFragment();
+
+            // 去重展示 (按IP+OLT+PON)
+            const seen = new Set();
+            filtered.forEach(r => {
+                const key = r.first + '|' + r.second + '|' + r.oltName;
+                if (seen.has(key)) return;
+                seen.add(key);
+
+                const div = document.createElement('div');
+                div.className = 'result-item reverse-result';
+                div.innerHTML = `
+                    <div><span class="highlight-label">📍 六级地址：</span> ${r.col4 || '(无)'}</div>
+                    <div><span class="highlight-label">🖥️ OLT名称：</span> ${r.oltName || '(无)'}</div>
+                    <div><span class="highlight-label">🌐 OLT IP：</span> ${r.first || '(无)'}</div>
+                    <div><span class="highlight-label">🔗 上联PON口：</span> ${r.second || '(无)'}</div>
+                `;
+                fragment.appendChild(div);
+            });
+
+            resultsContainer.appendChild(fragment);
+        }
+
+        // ---------- 正向UI (保留) ----------
+        function updateForwardSuggestions() {
+            const query = searchInput.value.trim();
+            suggestionsList.innerHTML = '';
+            suggestionsList.style.display = 'none';
+            resultsContainer.innerHTML = '';
+            noResultMsg.style.display = 'none';
+            oltNameDisplay.innerHTML = '<span class="label">⏳ 等待选择 OLT</span>';
+            oltNameDisplay.classList.remove('active');
+
+            if (!query || !isReady) return;
+
+            const matched = getMatchedFirstsWithIndex(query);
+            if (matched.length === 0) {
+                suggestionsList.style.display = 'block';
+                suggestionsList.innerHTML = '<div class="suggestions-empty">😕 未找到匹配结果</div>';
+                return;
+            }
+
+            suggestionsList.style.display = 'block';
+            const fragment = document.createDocumentFragment();
+            const displayLimit = 200;
+            const showCount = Math.min(matched.length, displayLimit);
+
+            for (let i = 0; i < showCount; i++) {
+                const item = matched[i];
+                const div = document.createElement('div');
+                div.className = 'suggestion-item';
+
+                const leftSpan = document.createElement('span');
+                leftSpan.className = 'suggestion-ip';
+                leftSpan.innerHTML = highlightText(item.first, query);
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'suggestion-name';
+                nameSpan.innerHTML = highlightText(item.oltName || '(无名称)', query);
+
+                div.appendChild(leftSpan);
+                div.appendChild(nameSpan);
+
+                div.addEventListener('click', () => {
+                    searchInput.value = item.first;
+                    suggestionsList.style.display = 'none';
+                    // 正向模式：显示OLT名称和对应记录（不含十级）
+                    const recs = records.filter(r => r.first === item.first);
+                    if (recs.length > 0) {
+                        const r = recs[0];
+                        oltNameDisplay.innerHTML = '<span class="label">📌 匹配名称：</span> <strong class="name-value">' +
+                            r.oltName + '</strong>';
+                        oltNameDisplay.classList.add('active');
+                        // 显示详细信息（不含十级）
+                        resultsContainer.innerHTML = '';
+                        noResultMsg.style.display = 'none';
+                        const frag = document.createDocumentFragment();
+                        recs.forEach(rr => {
+                            const d = document.createElement('div');
+                            d.className = 'result-item';
+                            d.innerHTML = `
+                                <div>🖥️ OLT: ${rr.oltName || '(无)'}</div>
+                                <div>🌐 IP: ${rr.first}</div>
+                                <div>🔗 PON: ${rr.second || '(无)'}</div>
+                                <div>📍 六级: ${rr.col4 || '(无)'}</div>
+                            `;
+                            frag.appendChild(d);
+                        });
+                        resultsContainer.appendChild(frag);
+                    } else {
+                        oltNameDisplay.innerHTML = '<span class="label">⚠️ 未找到数据</span>';
+                        oltNameDisplay.classList.remove('active');
+                    }
+                });
+
+                fragment.appendChild(div);
+            }
+            suggestionsList.appendChild(fragment);
+        }
+
+        // ---------- 统一搜索入口 ----------
+        function updateSuggestions() {
+            if (currentMode === 'forward') {
+                updateForwardSuggestions();
+            } else {
+                updateReverseSuggestions();
+            }
+        }
+
+        // ---------- 数据加载 ----------
+        async function loadData(forceRefresh = false) {
+            if (loadingLock) return;
+            loadingLock = true;
+
+            try {
+                if (window.location.protocol === 'file:') {
+                    throw new Error('检测到您通过本地文件协议（file://）打开页面，浏览器禁止自动加载外部文件。\n请使用 Live Server 运行，或点击下方"选择文件"按钮手动上传 data.xlsx。');
+                }
+
+                if (!forceRefresh) {
+                    setStatus('📂', '正在读取缓存…', false, true);
+                    setProgress(10);
+                    const cached = await loadFromCache();
+                    if (cached && cached.length > 0) {
+                        records = cached;
+                        const idx = buildIndexes(records);
+                        ipIndex = idx.ipMap;
+                        nameIndex = idx.nameMap;
+                        reverseCol4Index = idx.col4Map;
+                        isReady = true;
+                        setProgress(100);
+                        setTimeout(() => hideProgress(), 400);
+                        setStatus('✅', `从缓存加载 ${records.length} 条记录 (极速)`, false);
+                        searchInput.disabled = false;
+                        showUploadHint(false);
+                        refreshBtn.style.display = 'inline-flex';
+                        loadingLock = false;
+                        searchInput.focus();
+                        return;
+                    }
+                }
+
+                setStatus('⏳', '正在下载数据文件…', false, true, 0);
+                setProgress(0);
+                showUploadHint(false);
+                refreshBtn.style.display = 'none';
+
+                const response = await fetch('data.xlsx');
+                if (!response.ok) throw new Error('找不到 data.xlsx 文件，请确认文件与 index.html 在同一目录下');
+
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+
+                const reader = response.body.getReader();
+                const chunks = [];
+                let loaded = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    loaded += value.length;
+                    if (total > 0) {
+                        const pct = 20 + (loaded / total) * 40;
+                        setProgress(Math.min(60, pct));
+                        setStatus('⏳', '正在下载数据文件…', false, true, pct);
+                    } else {
+                        const pct = Math.min(60, 20 + (loaded / 1024) * 2);
+                        setProgress(pct);
+                        setStatus('⏳', '正在下载数据文件…', false, true, pct);
+                    }
+                }
+
+                const buffer = await new Blob(chunks).arrayBuffer();
+                setProgress(65);
+                setStatus('⏳', '正在解析 Excel 数据…', false, true, 65);
+                await new Promise(r => setTimeout(r, 50));
+
+                const workbook = XLSX.read(buffer, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+                if (rows.length < 2) throw new Error('至少需要标题行 + 一行数据');
+
+                const newRecords = [];
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || row.length === 0) continue;
+                    const first = String(row[0] || '').trim();
+                    const second = String(row[1] || '').trim();
+                    const oltName = String(row[2] || '').trim();
+                    const col4 = String(row[3] || '').trim();
+                    const col5 = String(row[4] || '').trim();
+                    if (first || second) {
+                        newRecords.push({ first, second, oltName, col4, col5 });
+                    }
+                    if (i % 500 === 0) {
+                        const pct = 75 + (i / rows.length) * 20;
+                        setProgress(Math.min(95, pct));
+                        setStatus('⏳', '正在解析 Excel 数据…', false, true, pct);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                }
+
+                if (newRecords.length === 0) throw new Error('没有有效数据');
+
+                records = newRecords;
+                setProgress(98);
+                setStatus('⏳', '正在构建搜索索引…', false, true, 98);
+                await new Promise(r => setTimeout(r, 30));
+                const idx = buildIndexes(records);
+                ipIndex = idx.ipMap;
+                nameIndex = idx.nameMap;
+                reverseCol4Index = idx.col4Map;
+                isReady = true;
+
+                setStatus('⏳', '正在保存缓存…', false, true, 99);
+                await saveToCache(records);
+
+                setProgress(100);
+                setTimeout(() => hideProgress(), 500);
+                setStatus('✅', `已加载 ${records.length} 条记录 (首次加载)`, false);
+                searchInput.disabled = false;
+                showUploadHint(false);
+                refreshBtn.style.display = 'inline-flex';
+                searchInput.focus();
+
+            } catch (err) {
+                console.error('加载失败:', err);
+                const msg = err.message.replace(/\n/g, ' ');
+                setStatus('❌', '加载失败：' + msg, true);
+                showUploadHint(true);
+                hideProgress();
+                isReady = false;
+                searchInput.disabled = true;
+            } finally {
+                loadingLock = false;
+            }
+        }
+
+        // ---------- 事件绑定 ----------
+        searchInput.addEventListener('input', function() {
+            if (!isReady) return;
+            clearTimeout(this._timer);
+            this._timer = setTimeout(() => {
+                updateSuggestions();
+            }, 120);
+        });
+
+        let hoverIndex = -1;
+        searchInput.addEventListener('keydown', function(e) {
+            const items = suggestionsList.querySelectorAll('.suggestion-item');
+            if (!items.length || suggestionsList.style.display === 'none') return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                hoverIndex = Math.min(hoverIndex + 1, items.length - 1);
+                items.forEach((item, idx) => item.classList.toggle('active-hover', idx === hoverIndex));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                hoverIndex = Math.max(hoverIndex - 1, 0);
+                items.forEach((item, idx) => item.classList.toggle('active-hover', idx === hoverIndex));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (hoverIndex >= 0 && items[hoverIndex]) items[hoverIndex].click();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-wrapper')) {
+                suggestionsList.style.display = 'none';
+            }
+        });
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            setStatus('⏳', '正在解析上传文件…', false, true, 0);
+            setProgress(0);
+            try {
+                const buffer = await file.arrayBuffer();
+                setProgress(30);
+                setStatus('⏳', '正在解析上传文件…', false, true, 30);
+                const workbook = XLSX.read(buffer, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                if (rows.length < 2) throw new Error('至少需要标题行 + 一行数据');
+                const newRecords = [];
+                for (let i = 1; i < rows.length; i++) {
+                    const row = rows[i];
+                    if (!row || row.length === 0) continue;
+                    const first = String(row[0] || '').trim();
+                    const second = String(row[1] || '').trim();
+                    const oltName = String(row[2] || '').trim();
+                    const col4 = String(row[3] || '').trim();
+                    const col5 = String(row[4] || '').trim();
+                    if (first || second) {
+                        newRecords.push({ first, second, oltName, col4, col5 });
+                    }
+                    if (i % 500 === 0) {
+                        const pct = 30 + (i / rows.length) * 60;
+                        setProgress(pct);
+                        setStatus('⏳', '正在解析上传文件…', false, true, pct);
+                        await new Promise(r => setTimeout(r, 0));
+                    }
+                }
+                if (newRecords.length === 0) throw new Error('没有有效数据');
+                records = newRecords;
+                const idx = buildIndexes(records);
+                ipIndex = idx.ipMap;
+                nameIndex = idx.nameMap;
+                reverseCol4Index = idx.col4Map;
+                isReady = true;
+                await saveToCache(records);
+                setProgress(100);
+                setTimeout(() => hideProgress(), 500);
+                setStatus('✅', `已加载 ${records.length} 条记录 (上传)`, false);
+                searchInput.disabled = false;
+                showUploadHint(false);
+                refreshBtn.style.display = 'inline-flex';
+                searchInput.focus();
+            } catch (err) {
+                setStatus('❌', '解析失败：' + err.message, true);
+                hideProgress();
+            }
+        });
+
+        refreshBtn.addEventListener('click', async () => {
+            if (loadingLock) return;
+            if (confirm('重新加载 data.xlsx 文件？缓存将被更新。')) {
+                await loadData(true);
+            }
+        });
+
+        // 模式切换
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (this.checked) {
+                    currentMode = this.value;
+                    resultsContainer.innerHTML = '';
+                    noResultMsg.style.display = 'none';
+                    oltNameDisplay.innerHTML = '<span class="label">⏳ 等待选择</span>';
+                    oltNameDisplay.classList.remove('active');
+                    suggestionsList.innerHTML = '';
+                    suggestionsList.style.display = 'none';
+
+                    if (currentMode === 'forward') {
+                        sectionTitle.innerHTML = '🔹 OLT IP / 名称 <span class="badge">支持任意片段</span>';
+                        searchInput.placeholder = '输入 IP 片段 或 OLT 名称关键词';
+                    } else {
+                        sectionTitle.innerHTML = '🔹 六级地址名称 (反向匹配) <span class="badge">输入地址关键词</span>';
+                        searchInput.placeholder = '输入六级地址名称，如 "惠民县" 或 "城关镇"';
+                    }
+                    if (searchInput.value.trim()) {
+                        updateSuggestions();
+                    }
+                    document.querySelectorAll('.mode-toggle label').forEach(l => l.classList.remove('active-mode'));
+                    this.closest('label').classList.add('active-mode');
+                }
+            });
+        });
+
+        // ---------- 启动 (默认反向) ----------
+        setStatus('⏳', '正在加载数据…', false, true, 0);
+        setProgress(0);
+        searchInput.disabled = true;
+        // 默认选中反向
+        document.querySelector('input[name="queryMode"][value="reverse"]').checked = true;
+        document.querySelector('label:has(input[value="reverse"])')?.classList.add('active-mode');
+        sectionTitle.innerHTML = '🔹 六级地址名称 (反向匹配) <span class="badge">输入地址关键词</span>';
+        searchInput.placeholder = '输入六级地址名称，如 "惠民县" 或 "城关镇"';
+
+        loadData().catch(e => {
+            console.error(e);
+            setStatus('❌', '加载失败：' + e.message, true);
+            hideProgress();
+            showUploadHint(true);
+        });
+
+        window.__refreshData = () => loadData(true);
+    </script>
+
+    <!-- PWA 注册 Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service Worker 注册成功:', reg.scope))
+                    .catch(err => console.log('Service Worker 注册失败:', err));
+            });
+        }
+    </script>
+</body>
+</html>
