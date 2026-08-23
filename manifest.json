@@ -1,13 +1,12 @@
 {
-  "name": "十级地址在线查询",
-  "short_name": "地址查询",
-  "description": "根据六级地址反向匹配OLT与PON口明细",
-  "start_url": "./index.html",
-  "display": "standalone",
   "background_color": "#f1f5f9",
-  "theme_color": "#667eea",
-  "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+  "dir": "ltr",
+  "display": "standalone",
+  "name": "十级地址在线查询",
+  "orientation": "any",
+  "scope": "/",
+  "short_name": "地址查询",
+  "start_url": "/",
+  "theme_color": "#6677ee",
+  "description": "根据六级地址反向匹配OLT与PON口明细"
 }
